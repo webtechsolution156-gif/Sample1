@@ -10,7 +10,7 @@ export default function Checkout() {
   const navigate = useNavigate();
 
   // YOUR RECEIVER UPI ID (CHANGE THIS TO YOUR OWN)
-  const RECEIVER_UPI_ID = 'udit9407@postbank'; // <<<--- CHANGE THIS
+  const RECEIVER_UPI_ID = '7505266931@slc'; // <<<--- CHANGE THIS
   const RECEIVER_NAME = 'Udit Narayan Saxena';
 
   const [formData, setFormData] = useState({
@@ -352,4 +352,5 @@ export default function Checkout() {
       </div>
     </div>
   );
+
 }
