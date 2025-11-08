@@ -4,7 +4,7 @@ export const products = [
     id: 1,
     name: "Wireless ANC Headphones",
     price: 89.99,
-    originalPrice: 129.99,
+    originalPrice: 12,
     category: "Electronics",
     rating: 4.5,
     reviews: 324,
@@ -116,4 +116,5 @@ export const products = [
     features: ["Touch Control", "3 Colors", "USB Port", "Eye-Caring"],
     specs: { "Power": "5W LED", "Height": "16\"", "Base": "6\" diameter" },
   },
+
 ];
