@@ -28,6 +28,7 @@ export default function Checkout() {
   const [errors, setErrors] = useState({});
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderId, setOrderId] = useState(null);
+  const [transactionId, setTransactionId] = useState(null); // NEW: Capture from UPI
   const [paymentStatus, setPaymentStatus] = useState(null);
   const [showQRModal, setShowQRModal] = useState(false);
   const qrCanvasRef = useRef(null);
@@ -62,27 +63,31 @@ export default function Checkout() {
   };
 
   // -----------------------------------------------------------------
-  // 3. UPI LINK (correct parameters)
+  // 3. UPI LINK (with txnid for callback)
   // -----------------------------------------------------------------
   const buildUpiLink = (orderId) => {
     const baseUrl = window.location.origin;
     const successUrl = `${baseUrl}/orders?status=success&orderId=${orderId}`;
     const failUrl = `${baseUrl}/checkout?status=failure&orderId=${orderId}`;
 
+    // Generate a unique txnid (most UPI apps return it)
+    const txnid = Date.now().toString(36).toUpperCase();
+
     return `upi://pay?pa=${RECEIVER_UPI_ID}&pn=${encodeURIComponent(
       RECEIVER_NAME
-    )}&am=${total.toFixed(2)}&cu=INR&tn=Order%20${orderId}&tr=${orderId}&url=${encodeURIComponent(
+    )}&am=${total.toFixed(2)}&cu=INR&tn=Order%20${orderId}&tr=${orderId}&txnid=${txnid}&url=${encodeURIComponent(
       successUrl
     )}&ru=${encodeURIComponent(failUrl)}`;
   };
 
   // -----------------------------------------------------------------
-  // 4. SAVE ORDER (common)
+  // 4. SAVE ORDER (localStorage)
   // -----------------------------------------------------------------
   const saveOrder = () => {
     const orders = JSON.parse(localStorage.getItem('confirmedOrders') || '[]');
     const newOrder = {
       orderId,
+      transactionId: transactionId || 'N/A',
       amount: total,
       paymentMethod,
       customer: `${formData.firstName} ${formData.lastName}`,
@@ -97,17 +102,18 @@ export default function Checkout() {
   };
 
   // -----------------------------------------------------------------
-  // 5. SEND WHATSAPP (common)
+  // 5. SEND WHATSAPP (with Transaction ID)
   // -----------------------------------------------------------------
   const sendWhatsApp = () => {
     const paymentInfo =
       paymentMethod === 'cod'
         ? '_Cash on Delivery (₹10 shipping added)_'
-        : '_Payment successful via UPI_';
+        : `_Payment successful via UPI (Txn: ${transactionId || 'N/A'})_`;
 
     const text = encodeURIComponent(
       `*New Order Received!*\n\n` +
         `Order ID: *${orderId}*\n` +
+        `Transaction ID: *${transactionId || 'N/A'}*\n` +
         `Amount: *₹${total.toFixed(2)}*\n` +
         `Payment: *${paymentMethod.toUpperCase()}* ${paymentInfo}\n` +
         `Customer: *${formData.firstName} ${formData.lastName}*\n` +
@@ -130,9 +136,11 @@ export default function Checkout() {
       const params = new URLSearchParams(window.location.search);
       const status = params.get('status')?.toLowerCase();
       const urlOrderId = params.get('orderId');
+      const txnId = params.get('txnid') || params.get('txnId') || 'N/A';
 
       if (status === 'success' && urlOrderId && paymentMethod === 'upi') {
         setOrderId(urlOrderId);
+        setTransactionId(txnId);
         setPaymentStatus(true);
         setShowQRModal(false);
         toast.success('Payment successful!');
@@ -152,7 +160,7 @@ export default function Checkout() {
     handleCallback();
     window.addEventListener('popstate', handleCallback);
     return () => window.removeEventListener('popstate', handleCallback);
-  }, [navigate, clearCart, paymentMethod]);
+  }, [navigate, clearCart, paymentMethod, total, cart, formData, transactionId]);
 
   // -----------------------------------------------------------------
   // 7. POLLING FOR DESKTOP QR PAYMENT
@@ -208,6 +216,7 @@ export default function Checkout() {
   const handleCodSubmit = () => {
     const newOrderId = generateOrderId();
     setOrderId(newOrderId);
+    setTransactionId('COD');
     saveOrder();
     sendWhatsApp();
     clearCart();
@@ -264,22 +273,37 @@ export default function Checkout() {
   }, [showQRModal]);
 
   // -----------------------------------------------------------------
-  // 13. RENDER
+  // 13. SUCCESS SCREEN (FULL POPUP)
   // -----------------------------------------------------------------
   if (paymentStatus === true) {
     return (
-      <div className="py-20 text-center">
-        <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-6" />
-        <h1 className="text-3xl font-bold text-green-600 mb-2">Payment Successful!</h1>
-        <p className="text-lg mb-4">
-          Order <strong className="font-mono">{orderId}</strong> confirmed.
-        </p>
-        <p className="text-sm text-gray-600 mb-2">WhatsApp sent to shop owner.</p>
-        <p className="text-gray-600">Redirecting to orders…</p>
+      <div className="fixed inset-0 bg-gradient-to-br from-green-50 to-white flex flex-col items-center justify-center p-6 z-50">
+        <CheckCircle className="w-24 h-24 text-green-500 mb-6 animate-pulse" />
+        <h1 className="text-3xl md:text-4xl font-bold text-green-700 mb-6">Payment Successful!</h1>
+
+        <div className="bg-white p-6 md:p-8 rounded-2xl shadow-xl max-w-md w-full text-center space-y-4 border border-green-200">
+          <div>
+            <p className="text-lg text-gray-700">
+              Order <strong className="font-mono text-xl">{orderId}</strong> confirmed.
+            </p>
+          </div>
+          <div className="bg-green-50 p-3 rounded-lg">
+            <p className="text-sm text-gray-600">
+              <span className="font-semibold">Transaction ID:</span>
+            </p>
+            <p className="font-mono text-green-700 font-bold break-all">{transactionId || 'N/A'}</p>
+          </div>
+        </div>
+
+        <p className="mt-8 text-sm text-gray-600">WhatsApp message sent to shop owner.</p>
+        <p className="text-gray-500 text-xs">Redirecting to your orders...</p>
       </div>
     );
   }
 
+  // -----------------------------------------------------------------
+  // 14. FAILURE SCREEN
+  // -----------------------------------------------------------------
   if (paymentStatus === false) {
     return (
       <div className="py-20 text-center">
@@ -292,6 +316,7 @@ export default function Checkout() {
           onClick={() => {
             setPaymentStatus(null);
             setOrderId(null);
+            setTransactionId(null);
             localStorage.removeItem('pendingOrderId');
             setShowQRModal(false);
             stopPolling();
@@ -304,6 +329,9 @@ export default function Checkout() {
     );
   }
 
+  // -----------------------------------------------------------------
+  // 15. MAIN CHECKOUT FORM
+  // -----------------------------------------------------------------
   return (
     <div className="py-12">
       <div className="max-w-4xl mx-auto px-4">
@@ -416,7 +444,7 @@ export default function Checkout() {
                 onChange={(e) =>
                   setFormData({
                     ...formData,
-                    shippingAddress腐: { ...formData.shippingAddress, zip: e.target.value },
+                    shippingAddress: { ...formData.shippingAddress, zip: e.target.value },
                   })
                 }
                 className="w-full p-3 border rounded-lg"
